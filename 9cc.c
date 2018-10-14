@@ -7,8 +7,8 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  printf("./intel_syntax noprefix\n");
-  printf("./global main\n");
+  printf(".intel_syntax noprefix\n");
+  printf(".global main\n");
   printf("main:\n");
   printf("  mov rax, %d\n", atoi(argv[1]));
   printf("  ret\n");

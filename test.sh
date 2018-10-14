@@ -9,9 +9,9 @@ try() {
   ./tmp
   actual="$?"
 
-  if ["$actual" != "$expected"]; then
+  if [ ${actual} != ${expected} ]; then
       echo "$input expected, but got $actual"
-      exit1
+      exit 1
   fi
 }
 
