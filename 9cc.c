@@ -21,10 +21,40 @@ typedef struct {
   char *input; // Token string (for error reporting)
 } Token;
 
-// Tokenized input is stored to this array.
-Token tokens[100];
+// Vector
+typedef struct {
+  void **data;
+  int capacity;
+  int len;
+} Vector;
 
-void tokenize(char *p) {
+Vector *new_vec() {
+  Vector *v = malloc(sizeof(Vector));
+  v->data = malloc(sizeof(void *) * 16);
+  v->capacity = 16;
+  v->len = 0;
+  return v;
+}
+
+void vec_push(Vector *v, void *elem) {
+  if (v->len == v->capacity) {
+    v->capacity *= 2;
+    v->data = realloc(v->data, sizeof(void *) * v->capacity);
+  }
+  v->data[v->len++] = elem;
+}
+
+Token *add_token(Vector *v, int ty, char *input) {
+  Token *t = malloc(sizeof(Token));
+  t->ty = ty;
+  t->input = input;
+  vec_push(v, t);
+  return t;
+}
+
+// Tokenized input is stored to this array.
+Vector *tokenize(char *p) {
+  Vector *v = new_vec();
   int i = 0;
   while (*p) {
     // Skip whitespace
@@ -35,8 +65,7 @@ void tokenize(char *p) {
 
     // + or -
     if (*p == '+' || *p == '-') {
-      tokens[i].ty = *p;
-      tokens[i].input = p;
+      add_token(v, *p, p);
       i++;
       p++;
       continue;
@@ -44,9 +73,8 @@ void tokenize(char *p) {
 
     // Number
     if (isdigit(*p)) {
-      tokens[i].ty = TK_NUM;
-      tokens[i].input = p;
-      tokens[i].val = strtol(p, &p, 10);
+      Token *t = add_token(v, TK_NUM, p);
+      t->val = strtol(p, &p, 10);
       i++;
       continue;
     }
@@ -55,12 +83,13 @@ void tokenize(char *p) {
     exit(1);
   }
 
-  tokens[i].ty = TK_EOF;
+  add_token(v, TK_EOF, p);
+  return v;
 }
 
 // Recursive-descendent parser
-
-int pos = 0;
+Vector *tokens;
+int pos;
 
 enum {
   ND_NUM = 256, // Number literal
@@ -98,9 +127,13 @@ noreturn void error(char *fmt, ...) {
 }
 
 Node *number() {
-  if (tokens[pos].ty == TK_NUM)
-    return new_node_num(tokens[pos++].val);
-  error("number expected, but got %s", tokens[pos].input);
+  Token *t = tokens->data[pos];
+  int op = t->ty;
+  if (t->ty != TK_NUM) {
+    error("number expected, but got %s", t->input);
+  }
+  pos++;
+  return new_node_num(t->val);
 }
 
 // expr
@@ -109,15 +142,17 @@ Node *number() {
 Node *expr() {
   Node *lhs = number();
   for (;;) {
-    int op = tokens[pos].ty;
+    Token *t = tokens->data[pos];
+    int op = t->ty;
     if (op != '+' && op != '-')
       break;
     pos++;
     lhs = new_node(op, lhs, number());
   }
 
-  if (tokens[pos].ty != TK_EOF)
-    error("stray token: %s", tokens[pos].input);
+  Token *t = tokens->data[pos];
+  if (t->ty != TK_EOF)
+    error("stray token: %s", t->input);
   return lhs;
 }
 
@@ -144,47 +179,37 @@ IR *new_ir(int op, int lhs, int rhs) {
   return ir;
 }
 
-IR *ins[1000];
+int gen_ir_sub(Vector *v, Node *node) {
+  static int regno;
 
-// Intermediate statements
-// 中間表現式の配列
-// 一要素は一つの式にあたる
-// IR: {
-//  op = '+' 
-//
-// }
-int inp;
-// レジスタ配列のindex
-int regno;
-
-int gen_ir_sub(Node *node) {
   if (node->ty == ND_NUM) {
     int r = regno++;
-    ins[inp++] = new_ir(IR_IMM, r, node->val);
+    vec_push(v, new_ir(IR_IMM, r, node->val));
     return r;
   }
   assert(node->ty == '+' || node->ty == '-');
   
-  int lhs = gen_ir_sub(node->lhs);
-  int rhs = gen_ir_sub(node->rhs);
+  int lhs = gen_ir_sub(v, node->lhs);
+  int rhs = gen_ir_sub(v, node->rhs);
 
-  ins[inp++] = new_ir(node->ty, lhs, rhs);
-  ins[inp++] = new_ir(IR_KILL, rhs, 0);
+  vec_push(v, new_ir(node->ty, lhs, rhs));
+  vec_push(v, new_ir(IR_KILL, rhs, 0));
   return lhs;
 }
 
-void gen_ir(Node *node) {
-  int r = gen_ir_sub(node);
-
+Vector *gen_ir(Node *node) {
+  Vector *v = new_vec();
+  int r = gen_ir_sub(v, node);
   // 最後に必ずret文を挿入してる
-  ins[inp++] = new_ir(IR_RETURN, r, 0);
+  vec_push(v, new_ir(IR_RETURN, r, 0));
+  return v;
 }
 
 // Register allocator
 char *regs[] = {"rdi", "rsi", "r10", "r11", "r12", "r13", "r14", "r15"};
-bool used[8];
+bool used[sizeof(regs) / sizeof(*regs)];
 
-int reg_map[1000];
+int *reg_map;
 
 int alloc(int ir_reg) {
   if (reg_map[ir_reg] != -1) {
@@ -208,9 +233,14 @@ void kill(int r) {
   used[r] = false;
 }
 
-void alloc_regs() {
-  for (int i = 0; i < inp; i++) {
-    IR *ir = ins[i];
+void alloc_regs(Vector *irv) {
+  reg_map = malloc(sizeof(int) * irv->len);
+  for (int i=0; i < irv->len; i++) {
+    reg_map[i] = -1;
+  }
+
+  for (int i = 0; i < irv->len; i++) {
+    IR *ir = irv->data[i];
 
     switch (ir->op) {
       case IR_IMM:
@@ -235,9 +265,9 @@ void alloc_regs() {
   }
 }
 
-void gen_x86() {
-  for (int i = 0; i< inp; i++) {
-    IR *ir = ins[i];
+void gen_x86(Vector *irv) {
+  for (int i = 0; i< irv->len; i++) {
+    IR *ir = irv->data[i];
 
     switch (ir->op) {
       case IR_IMM:
@@ -271,22 +301,18 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  for (int i = 0;i < sizeof(reg_map) / sizeof(*reg_map); i++) {
-    reg_map[i] = -1;
-  }
-
   // Tokenize and parse
-  tokenize(argv[1]);
+  tokens = tokenize(argv[1]);
   Node* node = expr();
 
-  gen_ir(node);
-  alloc_regs();
+  Vector *irv = gen_ir(node);
+  alloc_regs(irv);
 
   printf(".intel_syntax noprefix\n");
   printf(".global main\n");
   printf("main:\n");
 
   // Generate code while descending the parse tree.
-  gen_x86();
+  gen_x86(irv);
   return 0;
 } 
