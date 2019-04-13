@@ -8,7 +8,7 @@ try() {
   ./tmp
   actual="$?"
 
-  if [ "$actual" == "$expected" ]; then
+  if [ "$actual" = "$expected" ]; then
     echo "$input => $actual"
   else
     echo "$input expected, but got $actual"
