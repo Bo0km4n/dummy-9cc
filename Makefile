@@ -3,7 +3,7 @@ CC = cc
 	$(CC) -std=c99 9cc.c -o 9cc
 
 test: 9cc
-		./test.sh
+		sh ./test.sh
 
 clean:
 		rm -rf 9cc *.o *~ tmp* *.out
