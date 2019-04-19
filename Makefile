@@ -1,6 +1,12 @@
 CC = cc
-9cc: 
-	$(CC) -std=c99 9cc.c -o 9cc
+CFLAGS = -Wall -std=c11 -g
+SRCS = $(wildcard *.c)
+OBJS = $(SRCS:.c=.o)
+
+9cc: $(OBJS)
+	$(CC) -o $@ $(OBJS) $(LDFLAGS)
+
+$(OBJS): 9cc.h
 
 test: 9cc
 		sh ./test.sh
