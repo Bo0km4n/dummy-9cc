@@ -3,7 +3,7 @@
 static Vector *tokens;
 static int pos;
 
-Node *new_node(int op, Node *lhs, Node *rhs) {
+static Node *new_node(int op, Node *lhs, Node *rhs) {
   Node *node = malloc(sizeof(Node));
   node->ty = op;
   node->lhs = lhs;
@@ -11,7 +11,7 @@ Node *new_node(int op, Node *lhs, Node *rhs) {
   return node;
 }
 
-Node *new_node_num(int val) {
+static Node *new_node_num(int val) {
   Node *node = malloc(sizeof(Node));
   node->ty = ND_NUM;
   node->val = val;
@@ -27,7 +27,7 @@ noreturn void error(char *fmt, ...) {
   exit(1);
 }
 
-Node *number() {
+static Node *number() {
   Token *t = tokens->data[pos];
   if (t->ty != TK_NUM) {
     error("number expected, but got %s", t->input);
@@ -36,28 +36,41 @@ Node *number() {
   return new_node_num(t->val);
 }
 
-// expr
-// generate AST Nodes
-// 一文字読んでparseする
-Node *expr() {
+static Node *mul() {
   Node *lhs = number();
   for (;;) {
     Token *t = tokens->data[pos];
     int op = t->ty;
-    if (op != '+' && op != '-')
-      break;
+    if (op != '*' && op != '/')
+      return lhs;
     pos++;
     lhs = new_node(op, lhs, number());
   }
-
-  Token *t = tokens->data[pos];
-  if (t->ty != TK_EOF)
-    error("stray token: %s", t->input);
-  return lhs;
 }
+
+// expr
+// generate AST Nodes
+// 一文字読んでparseする
+static Node *expr() {
+  Node *lhs = mul();
+  for (;;) {
+    Token *t = tokens->data[pos];
+    int op = t->ty;
+    if (op != '+' && op != '-')
+      return lhs;
+    pos++;
+    lhs = new_node(op, lhs, mul());
+  }
+}
+
 
 Node *parse(Vector *v) {
     tokens = v;
     pos = 0;
-    return expr();
+
+    Node *node = expr();
+    Token *t = tokens->data[pos];
+    if (t->ty != TK_EOF)
+        error("stray token: %s", t->input);
+    return node;
 }
