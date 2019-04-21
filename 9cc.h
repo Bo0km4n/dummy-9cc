@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdnoreturn.h>
 #include <string.h>
+#include <stdint.h>
 
 // util.c
 
@@ -20,6 +21,19 @@ typedef struct {
 
 Vector *new_vec(void);
 void vec_push(Vector *v, void *elem);
+
+typedef struct {
+  Vector *keys;
+  Vector *vals;
+} Map;
+
+Map *new_map(void);
+void map_put(Map *map, char *key, void *val);
+void *map_get(Map *map, char *key);
+
+// util_test.c
+void util_test();
+
 
 // token.c
 
